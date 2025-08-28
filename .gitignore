@@ -1,0 +1,16 @@
+# Environment
+venv
+.env 
+
+# Django optional files and folders
+*.log
+*.pot
+*.pyc
+__pycache__
+db.sqlite3
+media
+*.py[co]
+__pycache__/
+**/__pycache__/
+logs
+.vscode
