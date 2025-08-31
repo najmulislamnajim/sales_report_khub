@@ -25,20 +25,21 @@ class LoginView(APIView):
         # ------------------------------
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT designation_id, work_area_t, name FROM rpl_user_list WHERE work_area_t = %s AND password = %s",
+                "SELECT designation_id, work_area_t, name, group_name FROM rpl_user_list WHERE work_area_t = %s AND password = %s",
                 [work_area_t, password]
             )
             row = cursor.fetchone()
-
+            
         if not row:
             return Response(
                 {"success": False, "message": "Invalid work_area or password"},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+            
         designation_id = row[0]
         territory_code = row[1]
         name = row[2]
+        brand_name=row[3]
         next_designation_id = max(designation_id - 1, 1)
         period = date.today().strftime('%Y%m')
 
@@ -92,6 +93,20 @@ class LoginView(APIView):
         next_user_list = [row[0] for row in rows]
         budget_quantity = rows[0][1]
         budget_amount = rows[0][2]
+        
+        # ---------------------------
+        # Fetch Brand Names
+        # ---------------------------
+        brand_query = f"""
+            SELECT DISTINCT brand_name
+            FROM rpl_material 
+            WHERE team1=%s;
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(brand_query, [brand_name])
+            brand_names = [row[0] for row in cursor.fetchall()]
+        
+        
 
         # ------------------------------
         # Step 4: Fetch current month sales
@@ -135,6 +150,7 @@ class LoginView(APIView):
             "budget_amount": round(budget_amount),
             "sales_quantity": sales_quantity,
             "sales_amount": round(sales_amount),
+            "brand_names": brand_names
         }
 
         # Attach next user list based on designation
