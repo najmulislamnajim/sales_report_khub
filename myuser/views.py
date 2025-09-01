@@ -67,7 +67,8 @@ class LoginView(APIView):
             SELECT
                 ul.work_area_t,
                 budget_summary.budget_quantity,
-                budget_summary.budget_amount
+                budget_summary.budget_amount,
+                ul.name
             FROM rpl_user_list ul
             CROSS JOIN (
                 SELECT 
@@ -90,7 +91,7 @@ class LoginView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        next_user_list = [row[0] for row in rows]
+        next_user_list = [f"{row[0]} - {row[3]}" for row in rows]
         budget_quantity = rows[0][1]
         budget_amount = rows[0][2]
         
