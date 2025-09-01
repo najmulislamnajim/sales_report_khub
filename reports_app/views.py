@@ -17,7 +17,7 @@ class GetDashboardData(APIView):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
         brand_name = request.query_params.get('brand_name')
-        next_designation_id = designation_id-1
+        next_designation_id = max(designation_id - 1, 1)
         
         # ----------------------------
         # Convert Dates
@@ -63,7 +63,8 @@ class GetDashboardData(APIView):
         SELECT
                 ul.work_area_t,
                 budget_summary.budget_quantity,
-                budget_summary.budget_amount
+                budget_summary.budget_amount,
+                ul.name
             FROM rpl_user_list ul
             CROSS JOIN (
                 SELECT 
@@ -81,12 +82,13 @@ class GetDashboardData(APIView):
         with connection.cursor() as cursor:
             cursor.execute(query, params)
             rows = cursor.fetchall()
+        print(periods)
         if not rows:
             return Response(
                 {"success": False, "message": "No Budget & user list data found"},
                 status=status.HTTP_404_NOT_FOUND
             )
-        next_user_list = [row[0] for row in rows]
+        next_user_list = [f"{row[0]} - {row[3]}" for row in rows]
         budget_quantity = rows[0][1] if rows[0][1] else 0
         budget_amount = round(rows[0][2]) if rows[0][2] else 0
         
@@ -131,6 +133,7 @@ class GetDashboardData(APIView):
         # ------------------------------
         data = {
             "designation_id": designation_id,
+            "next_designation_id": next_designation_id,
             "budget_quantity": budget_quantity,
             "budget_amount": budget_amount,
             "sales_quantity": sales_quantity or 0,
