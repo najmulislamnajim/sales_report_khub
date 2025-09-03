@@ -39,7 +39,7 @@ class LoginView(APIView):
         designation_id = row[0]
         territory_code = row[1]
         name = row[2]
-        brand_name=row[3]
+        group_name=row[3]
         next_designation_id = max(designation_id - 1, 1)
         period = date.today().strftime('%Y%m')
 
@@ -104,7 +104,7 @@ class LoginView(APIView):
             WHERE team1=%s;
         """
         with connection.cursor() as cursor:
-            cursor.execute(brand_query, [brand_name])
+            cursor.execute(brand_query, [group_name])
             brand_names = [row[0] for row in cursor.fetchall()]
         
         
@@ -151,7 +151,8 @@ class LoginView(APIView):
             "budget_amount": round(budget_amount),
             "sales_quantity": sales_quantity,
             "sales_amount": round(sales_amount),
-            "brand_names": brand_names
+            "brand_names": brand_names,
+            "group_name": group_name
         }
 
         # Attach next user list based on designation
