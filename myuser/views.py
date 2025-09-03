@@ -31,9 +31,16 @@ class LoginView(APIView):
                 {"success": False, "message": "Invalid work_area or password"},
                 status=status.HTTP_404_NOT_FOUND
             )
+        
+        data = {
+            "designation_id": row[0],
+            "work_area_t": row[1],
+            "name": row[2],
+            "group_name": row[3]
+        }
 
         return Response(
-            {"success": True, "message": "Login successful."},
+            {"success": True, "message": "Login successful.", "data":data},
             status=status.HTTP_200_OK
         )
 
@@ -56,3 +63,4 @@ class GetBrands(APIView):
             {"success": True, "message": "Brand names fetched successfully.", "data": brand_names},
             status=status.HTTP_200_OK
         )
+        
