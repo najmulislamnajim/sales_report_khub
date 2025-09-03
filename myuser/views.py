@@ -171,3 +171,23 @@ class LoginView(APIView):
             {"success": True, "message": "Login successful.", "data": data},
             status=status.HTTP_200_OK
         )
+
+class GetBrands(APIView):
+    def get(self,request):
+        group_name = request.query_params.get('group_name')
+        # ---------------------------
+        # Fetch Brand Names
+        # ---------------------------
+        brand_query = f"""
+            SELECT DISTINCT brand_name
+            FROM rpl_material 
+            WHERE team1=%s;
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(brand_query, [group_name])
+            brand_names = [row[0] for row in cursor.fetchall()]
+            
+        return Response(
+            {"success": True, "message": "Brand names fetched successfully.", "data": brand_names},
+            status=status.HTTP_200_OK
+        )
