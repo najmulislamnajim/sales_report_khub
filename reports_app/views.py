@@ -4,7 +4,7 @@ from django.db import connection
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from .utils import get_period_list, calculate_prorata_between_dates, calculate_prorata_from_date, calculate_prorata_to_date, get_sales_data
+from .utils import get_period_list, calculate_prorata_between_dates, calculate_prorata_from_date, calculate_prorata_to_date, get_sales_data, get_budget_summary, get_current_month_data
 
 # Create your views here.
 
@@ -188,4 +188,170 @@ class GetDashboardData(APIView):
             "sales_amount": sales_amount or 0,
         }
         
+        return Response({"success": True, "message":"All data fetched successfully.", "data": data}, status=status.HTTP_200_OK)
+    
+class GetDashboardReport(APIView):
+    def get(self, request):
+        # ------------------------------
+        # Get Query Parameters
+        # ------------------------------
+        work_area_t = request.query_params.get('work_area_t')
+        designation_id = int(request.query_params.get('designation_id'))
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        brand_name = request.query_params.get('brand_name', "")
+        next_designation_id = max(designation_id - 1, 1)
+        
+        # ----------------------------
+        # Validate Query Parameters
+        # ----------------------------
+        if not work_area_t or not designation_id:
+            return Response(
+                {"success": False, "message": "Missing work_area_t or designation_id in query parameters"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        is_current_month = True if not start_date and not end_date else False
+        # ----------------------------
+        # Convert Dates
+        # ----------------------------
+        if start_date:
+            start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+        else:
+            start_date = date.today().replace(day=1)
+        
+        if end_date:
+            end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+        else:
+            end_date = date.today()
+            
+        # -----------------------------
+        # Date Validation
+        # -----------------------------
+        current_year = date.today().year
+        current_month = date.today().month
+        if start_date.year != current_year and end_date.year != current_year and end_date > date.today():
+            return Response(
+                {"success": False, "message": "You must be select dates between current year till date."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # ------------------------------
+        # Map designation to DB columns
+        # ------------------------------
+        designation_mapping = {
+            1: ("work_area_t", "work_area"),
+            2: ("rm_code", "region_code"),
+            3: ("zm_code", "zone_code"),
+            4: ("sm_code", "sm_area_code"),
+            5: ("gm_code", "gm_area_code")
+        }
+        designation, area = designation_mapping.get(designation_id, (None, None))
+        if not designation:
+            return Response(
+                {"success": False, "message": "Invalid designation_id"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+            
+        # --------------------------------------
+        # Fetch Budget Data Till Current Month
+        # -------------------------------------
+        periods = [f"{current_year}{str(i).zfill(2)}" for i in range(1, current_month+1)]
+        budget_data_ytd = get_budget_summary(work_area_t, periods, designation, brand_name)
+
+        # -----------------------------------
+        # Fetch Budget Data For Current Month
+        # -----------------------------------
+        period = f"{current_year}{str(current_month).zfill(2)}"
+        budget_data = budget_data_ytd[period]
+        budget_quantity_curr_month, budget_amount_curr_month, prorata_budget_curr_month, sales_quantity_curr_month, sales_amount_curr_month = get_current_month_data(budget_data, designation, work_area_t, brand_name)
+        
+        # ------------------------------------
+        # Prepare Data For Response (initial)
+        # ------------------------------------
+        budget_amount_till_prev_month = sum(val.get("budget_amount") for key , val in budget_data_ytd.items() if key != period)
+        ytd_budget = budget_amount_till_prev_month + prorata_budget_curr_month
+        sales_amount_till_prev_month = sum(val.get("sales_amount") for key , val in budget_data_ytd.items() if key != period)
+        ytd_sales = sales_amount_till_prev_month + sales_amount_curr_month
+
+        ytd_achievement = (ytd_sales / ytd_budget) * 100 if ytd_budget else 0
+        val_achievement = (sales_amount_curr_month / prorata_budget_curr_month) * 100
+        
+        data = {
+            "work_area_t": work_area_t,
+            "designation_id": designation_id,
+            "start_date": start_date,
+            "end_date": end_date,
+            "brand_name": brand_name,
+            "budget_quantity": int(budget_quantity_curr_month),
+            "budget_amount": round(budget_amount_curr_month),
+            "prorata_budget": round(prorata_budget_curr_month),
+            "sales_quantity": int(sales_quantity_curr_month),
+            "sales_amount": round(sales_amount_curr_month),
+            "val_achievement": round(val_achievement),
+            "ytd_achievement": round(ytd_achievement)
+        }
+        
+        if is_current_month:
+            return Response({"success": True, "message":"All data fetched successfully.", "data": data}, status=status.HTTP_200_OK)
+        
+        # ------------------------------------
+        # If date range is selected
+        # ------------------------------------
+        selected_periods = get_period_list(start_date, end_date)
+        first_day = (start_date.day == 1)
+        last_day = (end_date.day == calendar.monthrange(end_date.year, end_date.month)[1])
+        if len(selected_periods) == 1:
+            period = selected_periods[0]
+            budget_quantity = budget_data_ytd[period].get("budget_quantity", 0)
+            budget_amount = budget_data_ytd[period].get("budget_amount", 0)
+            # calculate prorata budget & sales data
+            if first_day and last_day:
+                prorata_budget = budget_amount
+                sales_quantity = budget_data_ytd[period].get("sales_quantity", 0)
+                sales_amount = budget_data_ytd[period].get("sales_amount", 0)
+            else:
+                if first_day and not last_day:
+                    prorata_budget = calculate_prorata_to_date(end_date, budget_amount)
+                elif not first_day and last_day:
+                    prorata_budget = calculate_prorata_from_date(start_date, budget_amount)
+                else:
+                    prorata_budget = calculate_prorata_between_dates(start_date, end_date, budget_amount)
+
+                sales_quantity, sales_amount = get_sales_data(
+                    start_date, end_date, designation, work_area_t, brand_name
+                )
+
+            # Achievement %
+            val_achievement = (sales_amount / prorata_budget) * 100 if prorata_budget else 0
+        else:
+            budget_quantity = sum(budget_data_ytd[period].get("budget_quantity", 0) for period in selected_periods)
+            budget_amount = sum(budget_data_ytd[period].get("budget_amount", 0) for period in selected_periods)
+            sales_quantity = sum(budget_data_ytd[period].get("sales_quantity", 0) for period in selected_periods)
+            sales_amount = sum(budget_data_ytd[period].get("sales_amount", 0) for period in selected_periods)
+            prorata_budget = budget_amount
+            
+            if not first_day:
+                prorata_budget_first = calculate_prorata_from_date(start_date, budget_data_ytd[selected_periods[0]].get("budget_amount", 0))
+                end_date_of_month = start_date.replace(day=calendar.monthrange(start_date.year, start_date.month)[1])
+                sales_qty_first, sales_amount_first = get_sales_data(start_date, end_date_of_month, designation, work_area_t, brand_name)
+                period = f"{start_date.year}{str(start_date.month).zfill(2)}"
+                prorata_budget = prorata_budget - budget_data_ytd[period].get("budget_amount", 0) + prorata_budget_first
+                sales_amount = sales_amount - budget_data_ytd[period].get("sales_amount", 0) + sales_amount_first
+                sales_quantity = sales_quantity - budget_data_ytd[period].get("sales_quantity", 0) + sales_qty_first
+            if not last_day:
+                prorata_budget_last = calculate_prorata_to_date(end_date, budget_data_ytd[selected_periods[-1]].get("budget_amount", 0))
+                start_date_of_month = end_date.replace(day=1)
+                sales_qty_last, sales_amount_last = get_sales_data(start_date_of_month, end_date, designation, work_area_t, brand_name)
+                period = f"{end_date.year}{str(end_date.month).zfill(2)}"
+                prorata_budget = prorata_budget - budget_data_ytd[period].get("budget_amount", 0) + prorata_budget_last
+                sales_amount = sales_amount - budget_data_ytd[period].get("sales_amount", 0) + sales_amount_last
+                sales_quantity = sales_quantity - budget_data_ytd[period].get("sales_quantity", 0) + sales_qty_last
+            val_achievement = (sales_amount / prorata_budget) * 100 if prorata_budget else 0
+        
+        data["budget_quantity"] = int(budget_quantity)
+        data["prorata_budget"] = round(prorata_budget)
+        data["sales_quantity"] = int(sales_quantity)
+        data["sales_amount"] = round(sales_amount)
+        data["val_achievement"] = round(val_achievement)    
+            
         return Response({"success": True, "message":"All data fetched successfully.", "data": data}, status=status.HTTP_200_OK)

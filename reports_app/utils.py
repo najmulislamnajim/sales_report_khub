@@ -1,5 +1,5 @@
 import calendar
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import connection
@@ -29,16 +29,13 @@ def get_working_days(date):
             total_working_days += 1
             if d >= day:
                 working_days += 1
-    print(working_days, total_working_days)
     return (working_days, total_working_days)
 
 
 def calculate_prorata_from_date(date, amount):
-    print(amount)
     w,twd = get_working_days(date)
     prorata_amount =(amount/twd)*w
-    print(prorata_amount)
-    return round(prorata_amount)
+    return prorata_amount
 
 # def calculate_prorata_to_date(date, amount):
 #     w,twd = get_working_days(date)
@@ -47,7 +44,6 @@ def calculate_prorata_from_date(date, amount):
 #     return round(prorata_amount)
 
 def calculate_prorata_to_date(end_date, amount):
-    print(amount)
     last_day = calendar.monthrange(end_date.year, end_date.month)[1]
     end_day = end_date.day
     twd = 0
@@ -57,11 +53,9 @@ def calculate_prorata_to_date(end_date, amount):
         if current_date.weekday() != 4:
             twd += 1
             if d <= end_day:
-                wd += 1
-    print(wd, twd)                                     
+                wd += 1                                     
     prorata_amount = (amount / twd) * wd
-    print(prorata_amount)
-    return round(prorata_amount)
+    return prorata_amount
 def calculate_prorata_between_dates(start_date, end_date, amount):
     last_day = calendar.monthrange(start_date.year, start_date.month)[1]
     sd = start_date.day
@@ -73,10 +67,9 @@ def calculate_prorata_between_dates(start_date, end_date, amount):
         if current_date.weekday() != 4:
             twd += 1
             if d >= sd and d <= ed:
-                wd += 1
-    print(wd, twd)                                     
+                wd += 1                                    
     prorata_amount = (amount / twd) * wd
-    return round(prorata_amount)
+    return prorata_amount
 
 def get_sales_data(start_date, end_date, designation, work_area_t, brand_name=""):
     params = [start_date, end_date, work_area_t]
@@ -109,6 +102,60 @@ def get_sales_data(start_date, end_date, designation, work_area_t, brand_name=""
             sales_data = cursor.fetchall()
     if not sales_data:
         return (0, 0)
-    sales_quantity = int(sum(row[3] for row in sales_data))
-    sales_amount = round(sum(row[2] for row in sales_data))
+    sales_quantity = sum(row[3] for row in sales_data)
+    sales_amount = sum(row[2] for row in sales_data)
     return (sales_quantity, sales_amount)
+
+def get_budget_summary(work_area_t, periods, designation, brand_name=""):
+    params = [work_area_t,periods]
+    if brand_name:
+        brand = f"AND rst.brand_name = %s"
+        params.append(brand_name)
+    else:
+        brand = ""
+        
+    query = f"""
+        SELECT
+            rst.period, 
+            SUM(rst.budget) AS budget_quantity,
+            SUM(rst.budget_amount) AS budget_amount,
+            SUM(rst.sales) AS sales_quantity,
+            SUM(rst.sales_amount) AS sales_amount
+        FROM rpl_sales_tty rst 
+        WHERE rst.work_area IN (
+                SELECT work_area_t 
+                FROM rpl_user_list 
+                WHERE {designation} = %s AND designation_id=1
+            )
+            AND rst.period IN %s 
+            {brand}
+        GROUP BY rst.period
+        ORDER BY rst.period ASC;
+    """
+
+    with connection.cursor() as cursor:
+        cursor.execute(query, params)
+        sales_tty = cursor.fetchall()
+        
+    if not sales_tty:
+        return {}
+    data = {}
+    for row in sales_tty:
+        data[row[0]] = {
+            "budget_quantity": row[1],
+            "budget_amount": row[2],
+            "sales_quantity": row[3],
+            "sales_amount": row[4]
+        }
+    return data
+
+def get_current_month_data(budget_data, designation, work_area_t, brand_name=""):
+    budget_quantity = budget_data.get('budget_quantity', 0)
+    budget_amount = budget_data.get('budget_amount', 0)
+    end_date = date.today()
+    start_date = end_date.replace(day=1)
+    
+    prorata_budget = calculate_prorata_to_date(end_date, budget_amount)
+    sales_quantity, sales_amount = get_sales_data(start_date, end_date, designation, work_area_t, brand_name)
+    
+    return (budget_quantity, budget_amount, prorata_budget, sales_quantity, sales_amount)
