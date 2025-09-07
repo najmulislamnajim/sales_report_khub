@@ -101,7 +101,6 @@ class GetDashboardData(APIView):
         # I Don't Know
         # --------------------------------
         if len(periods) == 1:
-            print("i am in single period")
             budget_quantity = int(sum([row[0] for row in sales_tty]))
             budget_amount = round(sum([row[1] for row in sales_tty]))
             prorata_budget = calculate_prorata_between_dates(start_date, end_date, budget_amount)
@@ -114,34 +113,29 @@ class GetDashboardData(APIView):
                 
             # Calculate Budget
             if not first_day_of_month and not end_day_of_month:
-                print("i am in if block")
                 budget_amount = round(sum([row[1] for row in sales_tty[1:-1]]))
                 start_prorata_budget = calculate_prorata_from_date(start_date, sales_tty[0][1])
                 end_prorata_budget = calculate_prorata_to_date(end_date, sales_tty[-1][1])
                 
                 first_date = start_date
-                year , month = first_date.year, first_date.month
-                last_date = calendar.monthrange(year, month)[1]
+                last_date = start_date.replace(day=calendar.monthrange(start_date.year, start_date.month)[1])
                 start_sales_quantity, start_sales_amount = get_sales_data(first_date, last_date, designation, work_area_t, brand_name)
                 
                 first_date = end_date.replace(day=1)
                 last_date = end_date
                 end_sales_quantity, end_sales_amount = get_sales_data(first_date, last_date, designation, work_area_t, brand_name)
-                print(budget_amount)
                 budget_quantity = int(sum([row[0] for row in sales_tty]))
                 budget_amount = budget_amount + start_prorata_budget + end_prorata_budget
                 sales_quantity = int(sum([row[2] for row in sales_tty[1:-1]]))
                 sales_quantity = sales_quantity + start_sales_quantity + end_sales_quantity
                 sales_amount = round(sum([row[3] for row in sales_tty[1:-1]]))
                 sales_amount = sales_amount + start_sales_amount + end_sales_amount
-            elif not first_day_of_month:
-                print("i am in first elif block")
+            elif not first_day_of_month and end_day_of_month:
                 budget_amount = round(sum([row[1] for row in sales_tty[1:]]))
                 start_prorata_budget = calculate_prorata_from_date(start_date, sales_tty[0][1])
                 
                 first_date = start_date
-                year , month = first_date.year, first_date.month
-                last_date = calendar.monthrange(year, month)[1]
+                last_date = start_date.replace(day=calendar.monthrange(start_date.year, start_date.month)[1])
                 start_sales_quantity, start_sales_amount = get_sales_data(first_date, last_date, designation, work_area_t, brand_name)
                 
                 budget_quantity = int(sum([row[0] for row in sales_tty]))
@@ -150,8 +144,7 @@ class GetDashboardData(APIView):
                 sales_quantity = sales_quantity + start_sales_quantity
                 sales_amount = round(sum([row[3] for row in sales_tty[1:]]))
                 sales_amount = sales_amount + start_sales_amount
-            elif not end_day_of_month:
-                print("i am in last elif block")
+            elif not end_day_of_month and first_day_of_month:
                 budget_amount = round(sum([row[1] for row in sales_tty[:-1]]))
                 end_prorata_budget = calculate_prorata_to_date(end_date, sales_tty[-1][1])
                 
@@ -166,7 +159,6 @@ class GetDashboardData(APIView):
                 sales_amount = round(sum([row[3] for row in sales_tty[:-1]]))
                 sales_amount = sales_amount + end_sales_amount
             else:
-                print("i am in else block")
                 budget_quantity = int(sum([row[0] for row in sales_tty]))
                 budget_amount = round(sum([row[1] for row in sales_tty]))
                 sales_quantity = int(sum([row[2] for row in sales_tty]))
