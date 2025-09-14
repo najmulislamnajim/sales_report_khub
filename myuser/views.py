@@ -94,17 +94,132 @@ class GetNextUserList(APIView):
                 {"success": False, "message": "No data found"},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+ 
         next_user_list = [f"{row[0]} - {row[1]}" for row in rows]
         data = {
             "work_area_t": work_area_t,
             "current_designation_id": designation_id,
             "user_list": next_user_list,
-            "next_designation_id": next_designation_id
+            "next_designation_id": next_designation_id,
+            "sm": "",
+            "zm": "",
+            "rm": ""
         }
+        query = f"""
+        SELECT work_area_t, name, designation_id
+        FROM rpl_user_list
+        WHERE work_area_t IN (
+            SELECT rm_code FROM rpl_user_list WHERE work_area_t=%s
+            UNION
+            SELECT zm_code FROM rpl_user_list WHERE work_area_t=%s
+            UNION
+            SELECT sm_code FROM rpl_user_list WHERE work_area_t=%s
+        );
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(query, [work_area_t, work_area_t, work_area_t])
+            rows = cursor.fetchall()
+        for row in rows:
+            if row[2] == 4:
+                data["sm"] = f"{row[0]} - {row[1]}"
+            elif row[2] == 3:
+                data["zm"] = f"{row[0]} - {row[1]}"
+            elif row[2] == 2:
+                data["rm"] = f"{row[0]} - {row[1]}"
 
         return Response(
             {"success": True, "message": "Next user list fetched successfully.", "data": data},
             status=status.HTTP_200_OK
         )
+        
+# class GetNextUserList(APIView):
+#     def get(self, request):
+#         work_area_t = request.query_params.get('work_area_t')
+#         designation_id = int(request.query_params.get('designation_id'))
+#         user_type = request.query_params.get('type')
+        
+#         if not work_area_t or not designation_id:
+#             return Response(
+#                 {"success": False, "message": "Missing work_area_t or designation_id in query parameters"},
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+#         designation_mapping = {
+#             1: "work_area_t",
+#             2: "rm_code",
+#             3: "zm_code",
+#             4: "sm_code",
+#             5: "gm_code"
+#         }
+        
+#         user_type_mapping = {
+#             "mio":1,
+#             "rm":2,
+#             "zm":3,
+#             "sm":4,
+#             "gm":5
+#         }
+        
+#         if user_type:
+#             if user_type not in user_type_mapping:
+#                 return Response(
+#                     {"success": False, "message": "Invalid user type"},
+#                     status=status.HTTP_400_BAD_REQUEST
+#                 )
+            
+#             if user_type_mapping[user_type] > designation_id:
+#                 return Response(
+#                     {"success": False, "message": "You can't fetch users of higher or equal designation"},
+#                     status=status.HTTP_400_BAD_REQUEST
+#                 )
+                
+#             query = f"""
+#                 SELECT work_area_t, name 
+#                 FROM rpl_user_list 
+#                 WHERE {designation_mapping[designation_id]} = %s AND designation_id = %s;
+#             """
+#             with connection.cursor() as cursor:
+#                 cursor.execute(query, [work_area_t, user_type_mapping[user_type]])
+#                 rows = cursor.fetchall()
+                
+#             data = []
+#             for row in rows:
+#                 data.append(f"{row[0]} - {row[1]}")
+#             return Response(
+#                 {"success": True, "message": "Users fetched successfully.", "data": data},
+#                 status=status.HTTP_200_OK
+#             )
+                 
+#         else:
+#             query = f"""
+#                 SELECT work_area_t, name, designation_id
+#                 FROM rpl_user_list
+#                 WHERE work_area_t IN (
+#                     SELECT rm_code FROM rpl_user_list WHERE work_area_t= %s
+#                     UNION
+#                     SELECT zm_code FROM rpl_user_list WHERE work_area_t= %s
+#                     UNION
+#                     SELECT sm_code FROM rpl_user_list WHERE work_area_t= %s
+#                 );
+#             """
+#             with connection.cursor() as cursor:
+#                 cursor.execute(query, [work_area_t, work_area_t, work_area_t])
+#                 rows = cursor.fetchall()
+#             data = {
+#                 "sm": "",
+#                 "zm": "",
+#                 "rm": ""
+#             }
+#             for row in rows:
+#                 if row[2] == 4:
+#                    data["sm"] = f"{row[0]} - {row[1]}"
+#                 elif row[2] == 3:
+#                     data["zm"] = f"{row[0]} - {row[1]}"
+#                 elif row[2] == 2:
+#                     data["rm"] = f"{row[0]} - {row[1]}"
+#             return Response(
+#                 {"success": True, "message": "User selected successfully.", "data": data},
+#                 status=status.HTTP_200_OK
+#             )
+        
+        
         
