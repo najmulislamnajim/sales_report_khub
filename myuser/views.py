@@ -69,12 +69,20 @@ class GetNextUserList(APIView):
     def get(self, request):
         work_area_t = request.query_params.get('work_area_t')
         designation_id = int(request.query_params.get('designation_id'))
+        user_type = request.query_params.get('type')
         designation_mapping = {
             1: "work_area_t",
             2: "rm_code",
             3: "zm_code",
             4: "sm_code",
             5: "gm_code"
+        }
+        user_type_mapping = {
+            "mio":1,
+            "rm":2,
+            "zm":3,
+            "sm":4,
+            "gm":5
         }
         next_designation_id = max(designation_id - 1, 1)
         query = f"""
@@ -86,7 +94,7 @@ class GetNextUserList(APIView):
         """
         print(work_area_t, designation_id, next_designation_id)
         with connection.cursor() as cursor:
-            cursor.execute(query, [work_area_t, next_designation_id])
+            cursor.execute(query, [work_area_t, user_type_mapping[user_type]])
             rows = cursor.fetchall()
 
         if not rows:
