@@ -32,10 +32,11 @@ def get_working_days(date):
     return (working_days, total_working_days)
 
 
-def calculate_prorata_from_date(date, amount):
+def calculate_prorata_from_date(date, amount, quantity):
     w,twd = get_working_days(date)
+    prorata_quantity = (quantity/twd)*w
     prorata_amount =(amount/twd)*w
-    return prorata_amount
+    return (prorata_quantity, prorata_amount)
 
 # def calculate_prorata_to_date(date, amount):
 #     w,twd = get_working_days(date)
@@ -43,7 +44,7 @@ def calculate_prorata_from_date(date, amount):
 #     prorata_amount =(amount/twd)*nw
 #     return round(prorata_amount)
 
-def calculate_prorata_to_date(end_date, amount):
+def calculate_prorata_to_date(end_date, amount, quantity):
     last_day = calendar.monthrange(end_date.year, end_date.month)[1]
     end_day = end_date.day
     twd = 0
@@ -53,10 +54,11 @@ def calculate_prorata_to_date(end_date, amount):
         if current_date.weekday() != 4:
             twd += 1
             if d <= end_day:
-                wd += 1                                     
+                wd += 1
+    prorata_quantity = (quantity / twd) * wd                                     
     prorata_amount = (amount / twd) * wd
-    return prorata_amount
-def calculate_prorata_between_dates(start_date, end_date, amount):
+    return (prorata_quantity, prorata_amount)
+def calculate_prorata_between_dates(start_date, end_date, amount, quantity):
     last_day = calendar.monthrange(start_date.year, start_date.month)[1]
     sd = start_date.day
     ed = end_date.day
@@ -67,9 +69,10 @@ def calculate_prorata_between_dates(start_date, end_date, amount):
         if current_date.weekday() != 4:
             twd += 1
             if d >= sd and d <= ed:
-                wd += 1                                    
+                wd += 1  
+    prorata_quantity = (quantity / twd) * wd                                  
     prorata_amount = (amount / twd) * wd
-    return prorata_amount
+    return (prorata_quantity, prorata_amount)
 
 def get_sales_data(start_date, end_date, designation, work_area_t, brand_name=""):
     params = [start_date, end_date, work_area_t]
@@ -155,7 +158,7 @@ def get_current_month_data(budget_data, designation, work_area_t, brand_name="")
     end_date = date.today()
     start_date = end_date.replace(day=1)
     
-    prorata_budget = calculate_prorata_to_date(end_date, budget_amount)
+    prorata_quantity, prorata_budget = calculate_prorata_to_date(end_date, budget_amount, budget_quantity)
     sales_quantity, sales_amount = get_sales_data(start_date, end_date, designation, work_area_t, brand_name)
     
-    return (budget_quantity, budget_amount, prorata_budget, sales_quantity, sales_amount)
+    return (budget_quantity,prorata_quantity, budget_amount, prorata_budget, sales_quantity, sales_amount)

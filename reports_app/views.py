@@ -255,11 +255,12 @@ class GetDashboardReport(APIView):
         # -----------------------------------
         period = f"{current_year}{str(current_month).zfill(2)}"
         budget_data = budget_data_ytd[period]
-        budget_quantity_curr_month, budget_amount_curr_month, prorata_budget_curr_month, sales_quantity_curr_month, sales_amount_curr_month = get_current_month_data(budget_data, designation, work_area_t, brand_name)
+        budget_quantity_curr_month, prorata_quantity_curr_month, budget_amount_curr_month, prorata_budget_curr_month, sales_quantity_curr_month, sales_amount_curr_month = get_current_month_data(budget_data, designation, work_area_t, brand_name)
         
         # ------------------------------------
         # Prepare Data For Response (initial)
         # ------------------------------------
+        budget_quantity_till_prev_month = sum(val.get("budget_quantity") for key , val in budget_data_ytd.items() if key != period)
         budget_amount_till_prev_month = sum(val.get("budget_amount") for key , val in budget_data_ytd.items() if key != period)
         ytd_budget = budget_amount_till_prev_month + prorata_budget_curr_month
         sales_amount_till_prev_month = sum(val.get("sales_amount") for key , val in budget_data_ytd.items() if key != period)
@@ -275,6 +276,7 @@ class GetDashboardReport(APIView):
             "end_date": end_date,
             "brand_name": brand_name,
             "budget_quantity": int(budget_quantity_curr_month),
+            "prorata_quantity": int(prorata_quantity_curr_month),
             "budget_amount": round(budget_amount_curr_month),
             "prorata_budget": round(prorata_budget_curr_month),
             "sales_quantity": int(sales_quantity_curr_month),
@@ -284,6 +286,7 @@ class GetDashboardReport(APIView):
         }
         
         if is_current_month:
+            print("Current Month")
             return Response({"success": True, "message":"All data fetched successfully.", "data": data}, status=status.HTTP_200_OK)
         
         # ------------------------------------
@@ -293,6 +296,7 @@ class GetDashboardReport(APIView):
         first_day = (start_date.day == 1)
         last_day = (end_date.day == calendar.monthrange(end_date.year, end_date.month)[1])
         if len(selected_periods) == 1:
+            print("Single Period : ", selected_periods)
             """
             If only one period is selected, calculate prorata budget & sales data.
             """
@@ -300,7 +304,7 @@ class GetDashboardReport(APIView):
             budget_quantity = budget_data_ytd[period].get("budget_quantity", 0)
             budget_amount = budget_data_ytd[period].get("budget_amount", 0)
         
-            prorata_budget = calculate_prorata_between_dates(start_date, end_date, budget_amount)
+            prorata_quantity, prorata_budget = calculate_prorata_between_dates(start_date, end_date, budget_amount, budget_quantity)
             sales_quantity, sales_amount = get_sales_data(
                 start_date, end_date, designation, work_area_t, brand_name
             )
@@ -308,6 +312,7 @@ class GetDashboardReport(APIView):
             # Achievement %
             val_achievement = (sales_amount / prorata_budget) * 100 if prorata_budget else 0
         else:
+            print("Multiple Periods")
             """
             If more than one period is selected, calculate prorata budget & sales data.
             """
@@ -315,26 +320,32 @@ class GetDashboardReport(APIView):
             budget_amount = sum(budget_data_ytd[period].get("budget_amount", 0) for period in selected_periods)
             sales_quantity = sum(budget_data_ytd[period].get("sales_quantity", 0) for period in selected_periods)
             sales_amount = sum(budget_data_ytd[period].get("sales_amount", 0) for period in selected_periods)
+            prorata_quantity = budget_quantity
             prorata_budget = budget_amount
             
             if not first_day:
-                prorata_budget_first = calculate_prorata_from_date(start_date, budget_data_ytd[selected_periods[0]].get("budget_amount", 0))
+                print("not first day")
+                prorata_quantity_first, prorata_budget_first = calculate_prorata_from_date(start_date, budget_data_ytd[selected_periods[0]].get("budget_amount", 0), budget_data_ytd[selected_periods[0]].get("budget_quantity", 0))
                 end_date_of_month = start_date.replace(day=calendar.monthrange(start_date.year, start_date.month)[1])
                 sales_qty_first, sales_amount_first = get_sales_data(start_date, end_date_of_month, designation, work_area_t, brand_name)
                 period = f"{start_date.year}{str(start_date.month).zfill(2)}"
+                prorata_quantity = prorata_quantity - budget_data_ytd[period].get("budget_quantity", 0) + prorata_quantity_first
                 prorata_budget = prorata_budget - budget_data_ytd[period].get("budget_amount", 0) + prorata_budget_first
                 sales_amount = sales_amount - budget_data_ytd[period].get("sales_amount", 0) + sales_amount_first
                 sales_quantity = sales_quantity - budget_data_ytd[period].get("sales_quantity", 0) + sales_qty_first
             if not last_day:
-                prorata_budget_last = calculate_prorata_to_date(end_date, budget_data_ytd[selected_periods[-1]].get("budget_amount", 0))
+                print("not last day")
+                prorata_quantity_last,prorata_budget_last = calculate_prorata_to_date(end_date, budget_data_ytd[selected_periods[-1]].get("budget_amount", 0), budget_data_ytd[selected_periods[-1]].get("budget_quantity", 0))
                 start_date_of_month = end_date.replace(day=1)
                 sales_qty_last, sales_amount_last = get_sales_data(start_date_of_month, end_date, designation, work_area_t, brand_name)
                 period = f"{end_date.year}{str(end_date.month).zfill(2)}"
+                prorata_quantity = prorata_quantity - budget_data_ytd[period].get("budget_quantity", 0) + prorata_quantity_last
                 prorata_budget = prorata_budget - budget_data_ytd[period].get("budget_amount", 0) + prorata_budget_last
                 sales_amount = sales_amount - budget_data_ytd[period].get("sales_amount", 0) + sales_amount_last
                 sales_quantity = sales_quantity - budget_data_ytd[period].get("sales_quantity", 0) + sales_qty_last
             val_achievement = (sales_amount / prorata_budget) * 100 if prorata_budget else 0
         data["budget_quantity"] = int(budget_quantity)
+        data["prorata_quantity"] = int(prorata_quantity)
         data["budget_amount"] = round(budget_amount)
         data["prorata_budget"] = round(prorata_budget)
         data["sales_quantity"] = int(sales_quantity)
