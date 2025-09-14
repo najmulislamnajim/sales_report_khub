@@ -21,7 +21,7 @@ class LoginView(APIView):
         # ------------------------------
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT designation_id, work_area_t, name, group_name FROM rpl_user_list WHERE work_area_t = %s AND password = %s",
+                "SELECT designation_id, work_area_t, name, group_name, address FROM rpl_user_list WHERE work_area_t = %s AND password = %s",
                 [work_area_t, password]
             )
             row = cursor.fetchone()
@@ -36,7 +36,8 @@ class LoginView(APIView):
             "designation_id": row[0],
             "work_area_t": row[1],
             "name": row[2],
-            "group_name": row[3]
+            "group_name": row[3],
+            "address": row[4]
         }
 
         return Response(
