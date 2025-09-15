@@ -140,6 +140,45 @@ class GetNextUserList(APIView):
             status=status.HTTP_200_OK
         )
         
+class GetUserInfo(APIView):
+    def get(self, request, work_area_t):
+        query = f"""
+            SELECT
+                work_area_t,rm_code, rm_address, zm_code, zm_address, sm_code, sm_address, gm_code, gm_address, `name`, address, mobile_number, designation, group_name
+            FROM rpl_user_list 
+            WHERE work_area_t = %s;
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(query, [work_area_t])
+            row = cursor.fetchone()
+            
+        if not row:
+            return Response(
+                {"success": False, "message": "Invalid work_area_t"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        data = {
+            "work_area_t": row[0],
+            "address": row[10],
+            "name": row[9],
+            "designation": row[12],
+            "group_name": row[13],
+            "mobile_number": row[11],
+            "rm_code": row[1],
+            "rm_address": row[2],
+            "zm_code": row[3],
+            "zm_address": row[4],
+            "sm_code": row[5],
+            "sm_address": row[6],
+            "gm_code": row[7],
+            "gm_address": row[8]
+        }
+        return Response(
+            {"success": True, "message": "User info fetched successfully.", "data": data},
+            status=status.HTTP_200_OK
+        )
+        
+        
 # class GetNextUserList(APIView):
 #     def get(self, request):
 #         work_area_t = request.query_params.get('work_area_t')
