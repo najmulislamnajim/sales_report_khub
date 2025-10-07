@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from django.db import connection
 from rest_framework import status
 from datetime import date
+from .constant import *
 
 class LoginView(APIView):
     """
@@ -48,20 +49,47 @@ class LoginView(APIView):
 class GetBrands(APIView):
     def get(self,request):
         group_name = request.query_params.get('group_name')
+        
+        if group_name is None:
+            return Response(
+                {"success": False, "message": "Missing group_name in query parameters"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        if group_name.lower() == 'a':
+            return Response(
+                {"success": True, "message": "Brand names fetched successfully.", "data": GROUP_A_BRANDS},
+                status=status.HTTP_200_OK
+            )
+        if group_name.lower() == 'b':
+            return Response(
+                {"success": True, "message": "Brand names fetched successfully.", "data": GROUP_B_BRANDS},
+                status=status.HTTP_200_OK
+            )
+        if group_name.lower() == 'c':
+            return Response(
+                {"success": True, "message": "Brand names fetched successfully.", "data": GROUP_C_BRANDS},
+                status=status.HTTP_200_OK
+            )
         # ---------------------------
         # Fetch Brand Names
         # ---------------------------
         brand_query = f"""
-            SELECT DISTINCT brand_name
+            SELECT DISTINCT brand_name, brand_description 
             FROM rpl_material 
             WHERE team1=%s;
         """
         with connection.cursor() as cursor:
             cursor.execute(brand_query, [group_name])
-            brand_names = [row[0] for row in cursor.fetchall()]
+            rows = [row[0] for row in cursor.fetchall()]
             
+        brands = [] 
+        for row in rows:
+            brands.append({
+                "brand": row[0],
+                "brand_name": row[1]})
         return Response(
-            {"success": True, "message": "Brand names fetched successfully.", "data": brand_names},
+            {"success": True, "message": "Brand names fetched successfully.", "data": brands},
             status=status.HTTP_200_OK
         )
         
