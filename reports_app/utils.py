@@ -74,11 +74,18 @@ def calculate_prorata_between_dates(start_date, end_date, amount, quantity):
     prorata_amount = (amount / twd) * wd
     return (prorata_quantity, prorata_amount)
 
-def get_sales_data(start_date, end_date, designation, work_area_t, brand_name=""):
+def get_sales_data(start_date, end_date, designation, work_area_t, brand_name=[]):
     params = [start_date, end_date, work_area_t]
+    # if brand_name:
+    #     brand = f"AND m.brand_name = %s"
+    #     params.append(brand_name)
+    # else:
+    #     brand = ""
+    
     if brand_name:
-        brand = f"AND m.brand_name = %s"
-        params.append(brand_name)
+        placeholder = ','.join(['%s'] * len(brand_name))
+        brand = f"AND m.brand_name IN ({placeholder})"
+        params.extend(brand_name)
     else:
         brand = ""
         
@@ -109,11 +116,18 @@ def get_sales_data(start_date, end_date, designation, work_area_t, brand_name=""
     sales_amount = sum(row[2] for row in sales_data)
     return (sales_quantity, sales_amount)
 
-def get_budget_summary(work_area_t, periods, designation, brand_name=""):
+def get_budget_summary(work_area_t, periods, designation, brand_name=[]):
     params = [work_area_t,periods]
+    # if brand_name:
+    #     brand = f"AND rst.brand_name = %s"
+    #     params.append(brand_name)
+    # else:
+    #     brand = ""
+    
     if brand_name:
-        brand = f"AND rst.brand_name = %s"
-        params.append(brand_name)
+        placeholder = ','.join(['%s'] * len(brand_name))
+        brand = f"AND rst.brand_name IN ({placeholder})"
+        params.extend(brand_name)
     else:
         brand = ""
         

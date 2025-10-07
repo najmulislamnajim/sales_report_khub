@@ -191,8 +191,11 @@ class GetDashboardReport(APIView):
         designation_id = int(request.query_params.get('designation_id'))
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
-        brand_name = request.query_params.get('brand_name', "")
+        brands = request.query_params.get('brands').split(',')
         next_designation_id = max(designation_id - 1, 1)
+        
+        print(brands)
+        brand_name = brands or []
         
         # ----------------------------
         # Validate Query Parameters
@@ -248,14 +251,14 @@ class GetDashboardReport(APIView):
         # Fetch Budget Data Till Current Month
         # -------------------------------------
         periods = [f"{current_year}{str(i).zfill(2)}" for i in range(1, current_month+1)]
-        budget_data_ytd = get_budget_summary(work_area_t, periods, designation, brand_name)
+        budget_data_ytd = get_budget_summary(work_area_t, periods, designation, brand_name) # need to update for brand
 
         # -----------------------------------
         # Fetch Budget Data For Current Month
         # -----------------------------------
         period = f"{current_year}{str(current_month).zfill(2)}"
         budget_data = budget_data_ytd[period]
-        budget_quantity_curr_month, prorata_quantity_curr_month, budget_amount_curr_month, prorata_budget_curr_month, sales_quantity_curr_month, sales_amount_curr_month = get_current_month_data(budget_data, designation, work_area_t, brand_name)
+        budget_quantity_curr_month, prorata_quantity_curr_month, budget_amount_curr_month, prorata_budget_curr_month, sales_quantity_curr_month, sales_amount_curr_month = get_current_month_data(budget_data, designation, work_area_t, brand_name) # need to update for brand
         
         # ------------------------------------
         # Prepare Data For Response (initial)
@@ -307,7 +310,7 @@ class GetDashboardReport(APIView):
             prorata_quantity, prorata_budget = calculate_prorata_between_dates(start_date, end_date, budget_amount, budget_quantity)
             sales_quantity, sales_amount = get_sales_data(
                 start_date, end_date, designation, work_area_t, brand_name
-            )
+            ) # need to update for brand
             
             # Achievement %
             val_achievement = (sales_amount / prorata_budget) * 100 if prorata_budget else 0
@@ -327,7 +330,7 @@ class GetDashboardReport(APIView):
                 print("not first day")
                 prorata_quantity_first, prorata_budget_first = calculate_prorata_from_date(start_date, budget_data_ytd[selected_periods[0]].get("budget_amount", 0), budget_data_ytd[selected_periods[0]].get("budget_quantity", 0))
                 end_date_of_month = start_date.replace(day=calendar.monthrange(start_date.year, start_date.month)[1])
-                sales_qty_first, sales_amount_first = get_sales_data(start_date, end_date_of_month, designation, work_area_t, brand_name)
+                sales_qty_first, sales_amount_first = get_sales_data(start_date, end_date_of_month, designation, work_area_t, brand_name) # need to update for brand
                 period = f"{start_date.year}{str(start_date.month).zfill(2)}"
                 prorata_quantity = prorata_quantity - budget_data_ytd[period].get("budget_quantity", 0) + prorata_quantity_first
                 prorata_budget = prorata_budget - budget_data_ytd[period].get("budget_amount", 0) + prorata_budget_first
@@ -337,7 +340,7 @@ class GetDashboardReport(APIView):
                 print("not last day")
                 prorata_quantity_last,prorata_budget_last = calculate_prorata_to_date(end_date, budget_data_ytd[selected_periods[-1]].get("budget_amount", 0), budget_data_ytd[selected_periods[-1]].get("budget_quantity", 0))
                 start_date_of_month = end_date.replace(day=1)
-                sales_qty_last, sales_amount_last = get_sales_data(start_date_of_month, end_date, designation, work_area_t, brand_name)
+                sales_qty_last, sales_amount_last = get_sales_data(start_date_of_month, end_date, designation, work_area_t, brand_name) # need to update for brand
                 period = f"{end_date.year}{str(end_date.month).zfill(2)}"
                 prorata_quantity = prorata_quantity - budget_data_ytd[period].get("budget_quantity", 0) + prorata_quantity_last
                 prorata_budget = prorata_budget - budget_data_ytd[period].get("budget_amount", 0) + prorata_budget_last
