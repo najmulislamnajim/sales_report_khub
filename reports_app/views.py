@@ -191,8 +191,9 @@ class GetDashboardReport(APIView):
         designation_id = int(request.query_params.get('designation_id'))
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
-        brands = request.query_params.get('brands').split(',')
+        brands = request.query_params.get('brands')
         next_designation_id = max(designation_id - 1, 1)
+        brands = brands.split(',') if brands else ""
         
         print(brands)
         brand_name = brands or []
