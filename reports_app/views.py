@@ -5,6 +5,7 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from .utils import get_period_list, calculate_prorata_between_dates, calculate_prorata_from_date, calculate_prorata_to_date, get_sales_data, get_budget_summary, get_current_month_data
+from .sqls import get_4p_query
 
 # Create your views here.
 
@@ -357,3 +358,56 @@ class GetDashboardReport(APIView):
         data["val_achievement"] = round(val_achievement)    
             
         return Response({"success": True, "message":"All data fetched successfully.", "data": data}, status=status.HTTP_200_OK)
+    
+    
+class GetFourPData(APIView):
+    def get(self, request):
+        try:
+            work_area_t = request.query_params.get('work_area_t')
+            designation_id = int(request.query_params.get('designation_id'))
+            if not work_area_t or not designation_id:
+                return Response({"success": False, "message": "Missing work_area_t or designation_id in query parameters"}, status=status.HTTP_400_BAD_REQUEST)
+            designation_mapping = {
+                1: ("work_area_t", "work_area"),
+                2: ("rm_code", "region_code"),
+                3: ("zm_code", "zone_code"),
+                4: ("sm_code", "sm_area_code"),
+                5: ("gm_code", "gm_area_code")
+            }
+            designation, _ = designation_mapping.get(designation_id, ("work_area_t", "work_area"))
+            if not designation:
+                return Response(
+                    {"success": False, "message": "Invalid designation_id"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            query = get_4p_query(designation)
+            with connection.cursor() as cursor:
+                cursor.execute(query, [work_area_t])
+                columns = [col[0] for col in cursor.description]
+                results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            current_month = datetime.now().month
+            
+            total = sum(result.get("total", 0) for result in results)
+            radiant = sum(result.get("radiant", 0) for result in results)
+            current_month_total =  sum(result.get("total", 0) for result in results if result.get("month") == current_month) or 0
+            current_month_radiant = sum(result.get("radiant", 0) for result in results if result.get("month") == current_month) or 0
+            print(current_month_total)
+            
+            current_month_name = calendar.month_name[current_month]
+            result = {
+                "current_month_total": current_month_total,
+                "current_month_radiant": current_month_radiant,
+                "current_month_share" : round((current_month_radiant / current_month_total) * 100) if current_month_total else 0,
+                "current_month_rank" : "",
+                "total": total,
+                "radiant": radiant,
+                "total_share": round((radiant / total) * 100) if total else 0,
+                "total_rank": "",
+                "current_month_name": current_month_name,
+                "current_day" : datetime.now().day
+            }
+
+            return Response({"success": True, "message":"All data fetched successfully.", "data": result}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"success": False, "message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
