@@ -4,7 +4,7 @@ from django.db import connection
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from .utils import get_period_list, calculate_prorata_between_dates, calculate_prorata_from_date, calculate_prorata_to_date, get_sales_data, get_budget_summary, get_current_month_data
+from .utils import get_period_list, calculate_prorata_between_dates, calculate_prorata_from_date, calculate_prorata_to_date, get_sales_data, get_budget_summary, get_current_month_data, get_budget_data
 from .sqls import get_4p_query
 
 # Create your views here.
@@ -286,8 +286,8 @@ class GetDashboardReport(APIView):
             "prorata_budget": round(prorata_budget_curr_month),
             "sales_quantity": int(sales_quantity_curr_month),
             "sales_amount": round(sales_amount_curr_month),
-            "val_achievement": round(val_achievement),
-            "ytd_achievement": round(ytd_achievement)
+            "val_achievement": round(val_achievement, 2),
+            "ytd_achievement": round(ytd_achievement, 2)
         }
         
         if is_current_month:
@@ -355,7 +355,7 @@ class GetDashboardReport(APIView):
         data["prorata_budget"] = round(prorata_budget)
         data["sales_quantity"] = int(sales_quantity)
         data["sales_amount"] = round(sales_amount)
-        data["val_achievement"] = round(val_achievement)    
+        data["val_achievement"] = round(val_achievement,2)    
             
         return Response({"success": True, "message":"All data fetched successfully.", "data": data}, status=status.HTTP_200_OK)
     
@@ -411,3 +411,231 @@ class GetFourPData(APIView):
             return Response({"success": True, "message":"All data fetched successfully.", "data": result}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"success": False, "message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+        
+class GetDashboardReport2(APIView):
+    def get(self, request):
+        # ------------------------------
+        # Get Query Parameters
+        # ------------------------------
+        work_area_t = request.query_params.get('work_area_t')
+        designation_id = int(request.query_params.get('designation_id'))
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        brands = request.query_params.get('brands')
+        next_designation_id = max(designation_id - 1, 1)
+        brands = brands.split(',') if brands else ""
+        
+        brand_name = brands or []
+        
+        # ----------------------------
+        # Validate Query Parameters
+        # ----------------------------
+        if not work_area_t or not designation_id:
+            return Response(
+                {"success": False, "message": "Missing work_area_t or designation_id in query parameters"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        is_current_month = True if not start_date and not end_date else False
+        # ----------------------------
+        # Convert Dates
+        # ----------------------------
+        if start_date:
+            start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+        else:
+            start_date = date.today().replace(day=1)
+        
+        if end_date:
+            end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+        else:
+            end_date = date.today()
+            
+        # -----------------------------
+        # Date Validation
+        # -----------------------------
+        current_year = date.today().year
+        current_month = date.today().month
+        if start_date.year != current_year and end_date.year != current_year and end_date > date.today():
+            return Response(
+                {"success": False, "message": "You must be select dates between current year till date."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # ------------------------------
+        # Map designation to DB columns
+        # ------------------------------
+        designation_mapping = {
+            1: ("work_area_t", "work_area"),
+            2: ("rm_code", "region_code"),
+            3: ("zm_code", "zone_code"),
+            4: ("sm_code", "sm_area_code"),
+            5: ("gm_code", "gm_area_code")
+        }
+        designation, area = designation_mapping.get(designation_id, (None, None))
+        if not designation:
+            return Response(
+                {"success": False, "message": "Invalid designation_id"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        period_till_previous_month = [f"{current_year}{str(i).zfill(2)}" for i in range(1, current_month)]
+        period_till_previous_month = set(period_till_previous_month)
+        
+        # ------------------------------
+        # Fetch Budget Data For Full Year
+        # ------------------------------    
+        data, e = get_budget_data(work_area_t, designation, brand_name)
+        if e:
+            return Response({"success": False, "message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+        full_year_budget_quantity = sum(result.get("budget_quantity") for result in data)
+        full_year_budget_amount = sum(result.get("budget_amount") for result in data)
+        till_previous_month_budget_quantity = sum(result.get("budget_quantity") for result in data if result.get("period") in period_till_previous_month)
+        till_previous_month_budget_amount = sum(result.get("budget_amount") for result in data if result.get("period") in period_till_previous_month)
+        till_previous_month_sales_quantity = sum(result.get("sales_quantity") for result in data if result.get("period") in period_till_previous_month)
+        till_previous_month_sales_amount = sum(result.get("sales_amount") for result in data if result.get("period") in period_till_previous_month)
+        
+        # --------------------------------------
+        # All works about current month
+        # -------------------------------------
+        current_period = f"{current_year}{str(current_month).zfill(2)}"
+        current_month_data = [d for d in data if d["period"] == current_period][0]
+        q, pq, a, pa, sq, sa =  get_current_month_data(current_month_data, designation, work_area_t, brand_name)
+        till_current_day_budget_quantity = pq
+        till_current_day_budget_amount = pa
+        till_current_day_sales_quantity = sq
+        till_current_day_sales_amount = sa
+        
+        rest_current_month_budget_quantity = current_month_data.get("budget_quantity") - pq
+        rest_current_month_budget_amount = current_month_data.get("budget_amount") - pa
+        rest_current_month_sales_quantity = 0
+        rest_current_month_sales_amount = 0
+        
+        # --------------------------------------
+        # Calculation
+        # -------------------------------------
+        ytd_budget_quantity = till_previous_month_budget_quantity + till_current_day_budget_quantity
+        ytd_budget_amount = till_previous_month_budget_amount + till_current_day_budget_amount
+        ytd_sales_quantity = till_previous_month_sales_quantity + till_current_day_sales_quantity
+        ytd_sales_amount = till_previous_month_sales_amount + till_current_day_sales_amount
+        
+        ytd_achievement = (ytd_sales_amount / ytd_budget_amount) * 100
+        ytg_budget = full_year_budget_amount - ytd_budget_amount
+        ytg_sales_amount = full_year_budget_amount - ytd_sales_amount
+        ytg_achievement = (ytg_sales_amount / ytg_budget) * 100
+
+        remaining_months = 12 - current_month
+        if remaining_months > 0:
+            ytg_per_month_target = round(ytg_sales_amount / remaining_months)
+        else:
+            ytg_per_month_target = 0
+                
+        # result = {
+        #     "work_area_t": work_area_t,
+        #     "start_date": start_date,
+        #     "end_date": end_date,
+        #     "brand_name": brand_name,
+        #     "ytd_achievement": round(ytd_achievement,2),
+        #     "ytg_achievement": round(ytg_achievement,2),
+        #     "ytg_per_month_target": ytg_per_month_target
+        # }
+        
+        # ------------------------------------
+        # Prepare Data For Response (initial)
+        # ------------------------------------
+        val_achievement = (till_current_day_sales_amount / till_current_day_budget_amount) * 100
+        
+        result = {
+            "work_area_t": work_area_t,
+            "designation_id": designation_id,
+            "start_date": start_date,
+            "end_date": end_date,
+            "brand_name": brand_name,
+            "budget_quantity": int(till_current_day_budget_quantity),
+            "prorata_quantity": int(till_current_day_budget_quantity),
+            "budget_amount": round(till_current_day_budget_amount),
+            "prorata_budget": round(till_current_day_budget_amount),
+            "sales_quantity": int(till_current_day_sales_quantity),
+            "sales_amount": round(till_current_day_sales_amount),
+            "val_achievement": round(val_achievement),
+            "ytd_achievement": round(ytd_achievement, 2),
+            "ytg_achievement": round(ytg_achievement, 2),
+            "ytg_per_month_target": round(ytg_per_month_target)
+        }
+        
+        if is_current_month:
+            print("Current Month")
+            return Response({"success": True, "message":"All data fetched successfully.", "data": result}, status=status.HTTP_200_OK)
+        
+        # ------------------------------------
+        # If date range is selected
+        # ------------------------------------
+        selected_periods = get_period_list(start_date, end_date)
+        first_day = (start_date.day == 1)
+        last_day = (end_date.day == calendar.monthrange(end_date.year, end_date.month)[1])
+        if len(selected_periods) == 1:
+            print("Single Period : ", selected_periods)
+            """
+            If only one period is selected, calculate prorata budget & sales data.
+            """
+            period = selected_periods[0]
+            temp_data = [d for d in data if d["period"] == period][0]
+            budget_quantity = temp_data.get("budget_quantity", 0)
+            budget_amount = temp_data.get("budget_amount", 0)
+        
+            prorata_quantity, prorata_budget = calculate_prorata_between_dates(start_date, end_date, budget_amount, budget_quantity)
+            sales_quantity, sales_amount = get_sales_data(
+                start_date, end_date, designation, work_area_t, brand_name
+            ) # need to update for brand
+            
+            # Achievement %
+            val_achievement = (sales_amount / prorata_budget) * 100 if prorata_budget else 0
+        else:
+            print("Multiple Periods")
+            """
+            If more than one period is selected, calculate prorata budget & sales data.
+            """
+            period_set = set(selected_periods)
+            budget_quantity = sum(d.get("budget_quantity", 0) for d in data if d["period"] in period_set)
+            budget_amount = sum(d.get("budget_amount", 0) for d in data if d["period"] in period_set)
+            sales_quantity = sum(d.get("sales_quantity", 0) for d in data if d["period"] in period_set)
+            sales_amount = sum(d.get("sales_amount", 0) for d in data if d["period"] in period_set)
+            prorata_quantity = budget_quantity
+            prorata_budget = budget_amount
+            
+            if not first_day:
+                print("not first day")
+                temp_data = [d for d in data if d["period"] == selected_periods[0]][0]
+                prorata_quantity_first, prorata_budget_first = calculate_prorata_from_date(start_date, temp_data.get("budget_amount", 0), temp_data.get("budget_quantity", 0))
+                
+                end_date_of_month = start_date.replace(day=calendar.monthrange(start_date.year, start_date.month)[1])
+                sales_qty_first, sales_amount_first = get_sales_data(start_date, end_date_of_month, designation, work_area_t, brand_name) # need to update for brand
+                period = f"{start_date.year}{str(start_date.month).zfill(2)}"
+                temp_data = [d for d in data if d["period"] == period][0]
+                prorata_quantity = prorata_quantity - temp_data.get("budget_quantity", 0) + prorata_quantity_first
+                prorata_budget = prorata_budget - temp_data.get("budget_amount", 0) + prorata_budget_first
+                sales_amount = sales_amount - temp_data.get("sales_amount", 0) + sales_amount_first
+                sales_quantity = sales_quantity - temp_data.get("sales_quantity", 0) + sales_qty_first
+            if not last_day:
+                print("not last day")
+                temp_data = [d for d in data if d["period"] == selected_periods[-1]][0]
+                prorata_quantity_last,prorata_budget_last = calculate_prorata_to_date(end_date, temp_data.get("budget_amount", 0), temp_data.get("budget_quantity", 0))
+                start_date_of_month = end_date.replace(day=1)
+                sales_qty_last, sales_amount_last = get_sales_data(start_date_of_month, end_date, designation, work_area_t, brand_name) # need to update for brand
+                
+                period = f"{end_date.year}{str(end_date.month).zfill(2)}"
+                temp_data = [d for d in data if d["period"] == period][0]
+                prorata_quantity = prorata_quantity - temp_data.get("budget_quantity", 0) + prorata_quantity_last
+                prorata_budget = prorata_budget - temp_data.get("budget_amount", 0) + prorata_budget_last
+                sales_amount = sales_amount - temp_data.get("sales_amount", 0) + sales_amount_last
+                sales_quantity = sales_quantity - temp_data.get("sales_quantity", 0) + sales_qty_last
+            val_achievement = (sales_amount / prorata_budget) * 100 if prorata_budget else 0
+        result["budget_quantity"] = int(budget_quantity)
+        result["prorata_quantity"] = int(prorata_quantity)
+        result["budget_amount"] = round(budget_amount)
+        result["prorata_budget"] = round(prorata_budget)
+        result["sales_quantity"] = int(sales_quantity)
+        result["sales_amount"] = round(sales_amount)
+        result["val_achievement"] = round(val_achievement)    
+            
+        return Response({"success": True, "message":"All data fetched successfully.", "data": result}, status=status.HTTP_200_OK)

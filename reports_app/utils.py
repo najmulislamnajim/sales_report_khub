@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import connection
+from .sqls import get_budget_data_query
 
 def get_period_list(start_date, end_date):
     periods = []
@@ -176,3 +177,31 @@ def get_current_month_data(budget_data, designation, work_area_t, brand_name="")
     sales_quantity, sales_amount = get_sales_data(start_date, end_date, designation, work_area_t, brand_name)
     
     return (budget_quantity,prorata_quantity, budget_amount, prorata_budget, sales_quantity, sales_amount)
+
+def execute_raw_query_with_columns(query, params=None):
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(query, params)
+            columns = [col[0] for col in cursor.description]
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        return results, None
+    except Exception as e:
+        return [], e
+    
+def get_budget_data(work_area_t,designation, brand_name = []):
+    current_year = date.today().year
+    period = [f"{current_year}{str(i).zfill(2)}" for i in range(1, 13)]
+    params = [work_area_t, period]
+    
+    if brand_name:
+        placeholder = ','.join(['%s'] * len(brand_name))
+        brand = f"AND rst.brand_name IN ({placeholder})"
+        params.extend(brand_name)
+    else:
+        brand = ""
+        
+    query = get_budget_data_query(designation, brand)
+    data, e = execute_raw_query_with_columns(query, params)
+    if e:
+        return [], e
+    return data, None
