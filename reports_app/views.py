@@ -405,7 +405,8 @@ class GetFourPData(APIView):
                 "total_share": round((radiant / total) * 100) if total else 0,
                 "total_rank": "",
                 "current_month_name": current_month_name,
-                "current_day" : datetime.now().day
+                "current_day" : datetime.now().day,
+                "current_year" : datetime.now().year
             }
 
             return Response({"success": True, "message":"All data fetched successfully.", "data": result}, status=status.HTTP_200_OK)
