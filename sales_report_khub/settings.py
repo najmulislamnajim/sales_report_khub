@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     
     'myuser',
     'reports_app',
+    'four_p'
 ]
 
 MIDDLEWARE = [
