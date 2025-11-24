@@ -20,3 +20,17 @@ def get_fourP_details_query(designation):
                 )
         WHERE DATE(p.pdate) >= %s AND DATE(p.pdate) <= %s;
     """
+    
+    
+def get_next_group_query(designation, next_designation):
+    address = next_designation.split("_")[0]
+    address = address + "_address"
+    return f"""
+        SELECT 
+            {next_designation} as next_designation,
+            {address} as address,
+            GROUP_CONCAT(DISTINCT work_area_t) AS work_areas
+        FROM rpl_user_list
+        WHERE {designation} = %s AND designation_id = 1
+        GROUP BY {next_designation};
+    """

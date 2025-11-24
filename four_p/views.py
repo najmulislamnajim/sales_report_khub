@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from django.db import connection
 from rest_framework import status
 from datetime import date, datetime
-from .sqls import get_fourP_details_query
+from .sqls import get_fourP_details_query, get_next_group_query
 # Create your views here.
 def fmt(d):
     return d.strftime("%d %B %Y").lstrip("0") if d else ""
@@ -54,13 +54,13 @@ class GetFourPDetails(APIView):
         # Map designation to DB columns
         # ------------------------------
         designation_mapping = {
-            1: ("work_area_t", "work_area"),
-            2: ("rm_code", "region_code"),
-            3: ("zm_code", "zone_code"),
-            4: ("sm_code", "sm_area_code"),
-            5: ("gm_code", "gm_area_code")
+            1: ("work_area_t", "work_area", "territory"),
+            2: ("rm_code", "region_code", "region"),
+            3: ("zm_code", "zone_code", "zone"),
+            4: ("sm_code", "sm_area_code", "sm_area"),
+            5: ("gm_code", "gm_area_code", "gm_area")
         }
-        designation, area = designation_mapping.get(designation_id, (None, None))
+        designation, area, _ = designation_mapping.get(designation_id, (None, None))
         if not designation:
             return Response(
                 {"success": False, "message": "Invalid designation_id"},
@@ -81,6 +81,18 @@ class GetFourPDetails(APIView):
         grouped_results = defaultdict(list)
         for row in rows:
             grouped_results[row['phy_id']].append(row)
+        
+        # ------------------------------
+        # graph data
+        # ------------------------------
+        next_designation_id = max(designation_id - 1, 1)
+        next_designation, _ , graph_title = designation_mapping.get(next_designation_id, (None, None, None))
+        
+        graph_query = get_next_group_query(designation, next_designation)
+        with connection.cursor() as cursor:
+            cursor.execute(graph_query, [work_area_t])
+            graph_columns = [col[0] for col in cursor.description]
+            graph_rows = [dict(zip(graph_columns, row)) for row in cursor.fetchall()]
         # ------------------------------
         # Calculation
         # ------------------------------
@@ -110,6 +122,32 @@ class GetFourPDetails(APIView):
                 "dr_name" : results[0]['dr_name'],
             }
         
+        graph_data = defaultdict(dict)
+        for row in graph_rows:
+            graph_data[row['next_designation']] = {
+                "key": row['work_areas'],
+                "data" : [],
+                "address" : row['address']
+            }
+        for row in rows:
+            for key in graph_data.keys():
+                if row['vc2_1'].startswith('RDT') and row['work_area_t'] and row['work_area_t'] in graph_data[key]['key']:
+                    graph_data[key]['data'].append(row['phy_id'])
+                    break
+        
+        graph_res = []
+        for key in graph_data.keys():
+            total = len(graph_data[key]['data'])
+            graph_res.append({
+                "key": key,
+                "total" : total,
+                "address" : graph_data[key]['address'],
+                "share": round((total/_radiant) * 100 , 2)
+            }
+            )
+        
+        graph_res.sort(key=lambda x: x['share'], reverse=True)
+        graph_res = graph_res[:5]
         # ------------------------------
         # Response
         # ------------------------------
@@ -155,7 +193,9 @@ class GetFourPDetails(APIView):
             },
             "selected_brands": brand_name,
             "start_date": fmt(start_date),
-            "end_date": fmt(end_date)
+            "end_date": fmt(end_date),
+            "graph_data": graph_res,
+            "graph_title" : graph_title
         }
 
         return Response({"success": True, "data": data}, status=status.HTTP_200_OK)
