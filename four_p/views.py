@@ -189,8 +189,8 @@ class GetFourPDetails(APIView):
                     "others": _others,
                     "radiant": _radiant,
                     "brand": _brand,
-                    "radiant_share": round(_radiant / len(rows) if len(rows) > 0 else 0 , 2) * 100,
-                    "brand_share": round(_brand / len(rows) if len(rows) > 0 else 0 , 2) * 100
+                    "radiant_share": round((_radiant / len(rows) if len(rows) > 0 else 0) * 100 , 2),
+                    "brand_share": round((_brand / len(rows) if len(rows) > 0 else 0) * 100 , 2)
                 },
                 "selected_brands": brand_name,
                 "start_date": fmt(start_date),
