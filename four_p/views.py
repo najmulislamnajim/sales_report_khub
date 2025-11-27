@@ -8,6 +8,12 @@ from .sqls import get_fourP_details_query, get_next_group_query
 # Create your views here.
 def fmt(d):
     return d.strftime("%d %B %Y").lstrip("0") if d else ""
+
+def formatted_division(a,b):
+    try:
+        return a/b
+    except:
+        return 0.00
 class GetFourPDetails(APIView):
     def get(self, request):
         try:
@@ -116,8 +122,8 @@ class GetFourPDetails(APIView):
                     "others": others,
                     "radiant": radiant,
                     "brand": brand,
-                    "radiant_share": round((radiant / len(results) if len(results) > 0 else 0) * 100 , 2),
-                    "brand_share": round((brand / len(results) if len(results) > 0 else 0) * 100 , 2),
+                    "radiant_share": round(formatted_division(radiant, len(results)) * 100 , 2),
+                    "brand_share": round(formatted_division(brand, len(results)) * 100 , 2),
                     "four_p_id" : phy_id,
                     "rpl_dr_id" : results[0]['dr_child_id'],
                     "dr_name" : results[0]['dr_name'],
@@ -143,7 +149,7 @@ class GetFourPDetails(APIView):
                     "key": key,
                     "total" : total,
                     "address" : graph_data[key]['address'],
-                    "share": round((total/_radiant) * 100 , 2)
+                    "share": round(formatted_division(total/_radiant) * 100 , 2)
                 }
                 )
             
@@ -189,8 +195,8 @@ class GetFourPDetails(APIView):
                     "others": _others,
                     "radiant": _radiant,
                     "brand": _brand,
-                    "radiant_share": round((_radiant / len(rows) if len(rows) > 0 else 0) * 100 , 2),
-                    "brand_share": round((_brand / len(rows) if len(rows) > 0 else 0) * 100 , 2)
+                    "radiant_share": round(formatted_division(_radiant, len(rows)) * 100 , 2),
+                    "brand_share": round(formatted_division(_brand, len(rows)) * 100 , 2)
                 },
                 "selected_brands": brand_name,
                 "start_date": fmt(start_date),
