@@ -402,7 +402,7 @@ class GetFourPData(APIView):
                 "current_month_rank" : "",
                 "total": total,
                 "radiant": radiant,
-                "total_share": round((radiant / total) * 100) if total else 0,
+                "total_share": round((radiant / total if total else 0) * 100, 2),
                 "total_rank": "",
                 "current_month_name": current_month_name,
                 "current_day" : datetime.now().day,
