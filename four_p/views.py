@@ -1,19 +1,15 @@
-from rest_framework.views import APIView
+from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
-from rest_framework.response import Response
+from datetime import date, datetime, timedelta
 from django.db import connection
+from rest_framework.views import APIView
+from rest_framework.response import Response
 from rest_framework import status
-from datetime import date, datetime
+from . import utils
 from .sqls import get_fourP_details_query, get_next_group_query
+from .utils import formatted_division, fmt
 # Create your views here.
-def fmt(d):
-    return d.strftime("%d %B %Y").lstrip("0") if d else ""
-
-def formatted_division(a,b):
-    try:
-        return a/b
-    except:
-        return 0.00
 class GetFourPDetails(APIView):
     def get(self, request):
         try:
@@ -210,3 +206,172 @@ class GetFourPDetails(APIView):
             print(e)
             return Response({"success": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
+class GetFourPData(APIView):
+    def get(self, request):
+        try:
+            # ------------------------------
+            # Get Query Parameters
+            # ------------------------------
+            work_area_t = request.query_params.get('work_area_t')
+            designation_id = int(request.query_params.get('designation_id'))
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date')
+            brands = request.query_params.get('brands')
+            brands = brands.split(',') if brands else ""
+            brand_name = brands or []
+            
+            # ----------------------------
+            # Validate Query Parameters
+            # ----------------------------
+            if not work_area_t or not designation_id:
+                return Response({"success": False, "message": "Missing work_area_t or designation_id in query parameters"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # ----------------------------
+            # Convert Dates
+            # ----------------------------
+            if start_date:
+                start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+            else:
+                start_date = date.today().replace(day=1)
+            
+            if end_date:
+                end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+            else:
+                end_date = date.today()
+                
+            date1 = date(start_date.year,1,1)
+            date2 = datetime.today().replace(day=1) - timedelta(days=1)
+            
+            # -----------------------------
+            # Date Validation
+            # -----------------------------
+            current_year = date.today().year
+            current_month = date.today().month
+            if start_date.year != current_year and end_date.year != current_year and end_date > date.today():
+                return Response(
+                    {"success": False, "message": "You must be select dates between current year till date."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # ------------------------------
+            # Map designation to DB columns
+            # ------------------------------
+            designation_mapping = {
+                1: ("work_area_t", "work_area", "territory"),
+                2: ("rm_code", "region_code", "region"),
+                3: ("zm_code", "zone_code", "zone"),
+                4: ("sm_code", "sm_area_code", "sm_area"),
+                5: ("gm_code", "gm_area_code", "gm_area")
+            }
+            designation, area, _ = designation_mapping.get(designation_id, (None, None, None))
+            if not designation:
+                return Response(
+                    {"success": False, "message": "Invalid designation_id"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            next_designation_id = max(designation_id - 1, 1)
+            next_designation, _ , graph_title = designation_mapping.get(next_designation_id, (None, None, None))
+            
+            # ------------------------------
+            # Queries
+            # ------------------------------
+            c_query = get_fourP_details_query(designation)
+            c_params = [work_area_t, start_date, end_date]
+            g_query = get_next_group_query(designation, next_designation)
+            g_params = [work_area_t]
+            f_query = get_fourP_details_query(designation)
+            f_params = [work_area_t, date1, date2]
+            
+            # ------------------------------
+            # Get db results
+            # ------------------------------
+            output = {}
+            t1 = Thread(
+                target= utils.run_query,
+                args=("default", c_query, c_params, output, 'current_data')
+            )
+            t2 = Thread(
+                target= utils.run_query,
+                args=("default", g_query, g_params, output, 'group_data')
+            )
+            t3 = Thread(
+                target= utils.run_query,
+                args=("default", f_query, f_params, output, 'full_data')
+            )
+            t1.start()
+            t2.start()
+            t3.start()
+            t1.join()
+            t2.join()
+            t3.join()
+            
+            current_rows = output['current_data']
+            group_rows = output['group_data']
+            full_rows = output['full_data']
+            
+            # ------------------------------
+            # process row data
+            # ------------------------------
+            with ThreadPoolExecutor() as executor:
+                future1 = executor.submit(utils.process_current_four_p_data, current_rows, brand_name)
+                future2 = executor.submit(utils.process_four_p_data, full_rows, brand_name)
+
+                table_data, summary_data = future1.result()
+                ytd_data = future2.result()
+
+            graph_data = utils.process_four_p_data_for_graph(current_rows,group_rows, summary_data['radiant'])
+            
+            # ------------------------------
+            # Sorting
+            # ------------------------------
+            sort_by = request.query_params.get('sort')
+            sort_order = request.query_params.get('dir')
+            if sort_by == 'radiant':
+                table_data.sort(key=lambda x: x['radiant'], reverse=True if sort_order == 'desc' else False)
+            elif sort_by == 'brand':
+                table_data.sort(key=lambda x: x['brand'], reverse=True if sort_order == 'desc' else False)
+            
+            # ------------------------------
+            # pagination setup
+            # ------------------------------
+            page = int(request.query_params.get('page', 1))
+            page_size = int(request.query_params.get('per_page', 10))
+            if page <= 0 or page_size <= 0:
+                return Response({
+                    "success": False,
+                    "message": "Invalid 'page' or 'per_page'. Must be positive integers."
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # ------------------------------
+            # Paginate data
+            # ------------------------------
+            total_items = len(table_data)
+            total_pages = (total_items + page_size - 1) // page_size
+            if page > total_pages and total_pages != 0:
+                page = total_pages
+            start_index = (page - 1) * page_size
+            end_index = start_index + page_size
+            paginated_table_data = table_data[start_index:end_index]
+            
+            data = {
+                "page": page,
+                "per_page": page_size,
+                "total_items": total_items,
+                "total_pages": total_pages,
+                "data": paginated_table_data,
+                "summary" : summary_data,
+                "ytd" : ytd_data,
+                "graph_data" : graph_data,
+                "graph_title" : graph_title,
+                "selected_brands" : brand_name,
+                "start_date" : fmt(start_date),
+                "end_date" : fmt(end_date),
+                "sort_by" : sort_by,
+                "sort_order" : sort_order
+            }
+            
+            return Response({"success": True, "data": data}, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({"success": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
