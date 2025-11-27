@@ -149,7 +149,7 @@ class GetFourPDetails(APIView):
                     "key": key,
                     "total" : total,
                     "address" : graph_data[key]['address'],
-                    "share": round(formatted_division(total/_radiant) * 100 , 2)
+                    "share": round(formatted_division(total , _radiant) * 100 , 2)
                 }
                 )
             
@@ -207,5 +207,6 @@ class GetFourPDetails(APIView):
 
             return Response({"success": True, "data": data}, status=status.HTTP_200_OK)
         except Exception as e:
+            print(e)
             return Response({"success": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
