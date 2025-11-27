@@ -15,7 +15,7 @@ def get_fourP_details_query(designation):
                 di.team,
                 di.dr_name
         FROM rpl_prescription p 
-        LEFT JOIN rpl_doctor_info di ON p.phy_id = di.pppp_id AND di.work_area_t IN (
+        INNER JOIN rpl_doctor_info di ON p.phy_id = di.pppp_id AND di.work_area_t IN (
                     SELECT work_area_t FROM rpl_user_list WHERE {designation} = %s AND designation_id=1
                 )
         WHERE DATE(p.pdate) >= %s AND DATE(p.pdate) <= %s;
