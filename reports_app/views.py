@@ -558,7 +558,7 @@ class GetDashboardReport2(APIView):
             "prorata_budget": round(till_current_day_budget_amount),
             "sales_quantity": int(till_current_day_sales_quantity),
             "sales_amount": round(till_current_day_sales_amount),
-            "val_achievement": round(val_achievement),
+            "val_achievement": round(val_achievement, 2),
             "ytd_achievement": round(ytd_achievement, 2),
             "ytg_achievement": round(ytg_achievement, 2),
             "ytg_per_month_target": round(ytg_per_month_target)
