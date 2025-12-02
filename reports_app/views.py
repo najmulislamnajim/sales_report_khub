@@ -529,7 +529,7 @@ class GetDashboardReport2(APIView):
         if remaining_months > 0:
             ytg_per_month_target = round(ytg_sales_amount / remaining_months)
         else:
-            ytg_per_month_target = 0
+            ytg_per_month_target = ytg_sales_amount
                 
         # result = {
         #     "work_area_t": work_area_t,
